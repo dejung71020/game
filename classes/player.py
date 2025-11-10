@@ -1,12 +1,21 @@
 class Player:
     def __init__(self):
-        self.coins = 100
-        self.owned_stocks = {}  # {Stock: {"quantity": int, "buy_price": float}}
+        # 각 화폐별 현금
+        self.cash = {
+            "원": 100.0,
+            "코인": 0.0,
+            "금": 0.0,
+            "스탁": 0.0
+        }
+        # 보유 종목: {Stock: {"quantity": int, "buy_price": float, "currency": str}}
+        self.owned_stocks = {}
 
+    # ---------------- 투자 ----------------
     def invest(self, stock, quantity):
         cost = stock.price * quantity
-        if self.coins >= cost:
-            self.coins -= cost
+        currency = stock.currency  # Stock 클래스에서 currency 속성 사용
+        if self.cash[currency] >= cost:
+            self.cash[currency] -= cost
             if stock in self.owned_stocks:
                 old_qty = self.owned_stocks[stock]["quantity"]
                 old_price = self.owned_stocks[stock]["buy_price"]
@@ -14,16 +23,20 @@ class Player:
                 self.owned_stocks[stock]["quantity"] += quantity
                 self.owned_stocks[stock]["buy_price"] = new_avg
             else:
-                self.owned_stocks[stock] = {"quantity": quantity, "buy_price": stock.price}
+                self.owned_stocks[stock] = {"quantity": quantity, "buy_price": stock.price, "currency": currency}
             return True
         return False
 
-    def total_value(self):
-        return sum(stock.price*info["quantity"] for stock, info in self.owned_stocks.items())
+    # ---------------- 총보유자산 ----------------
+    def total_assets(self):
+        total = 0
+        # 1) 현금화된 원
+        total += self.cash["원"]
+        # 2) 각 화폐 단위로 산 종목 가치 합산
+        for stock, info in self.owned_stocks.items():
+            total += stock.price * info["quantity"]
+        return total
 
-    def profit_loss(self):
-        total_buy = sum(info["buy_price"]*info["quantity"] for info in self.owned_stocks.values())
-        total_now = self.total_value()
-        if total_buy == 0:
-            return 0
-        return (total_now - total_buy)/total_buy*100
+    # ---------------- 화폐별 현금만 ----------------
+    def assets_by_currency(self):
+        return self.cash.copy()
