@@ -1,6 +1,6 @@
 class Player:
     def __init__(self):
-        self.coins = 100  # 초기 코인
+        self.coins = 100
         self.owned_stocks = {}  # {Stock: {"quantity": int, "buy_price": float}}
 
     def invest(self, stock, quantity):
@@ -19,10 +19,7 @@ class Player:
         return False
 
     def total_value(self):
-        total = 0
-        for stock, info in self.owned_stocks.items():
-            total += stock.price * info["quantity"]
-        return total
+        return sum(stock.price*info["quantity"] for stock, info in self.owned_stocks.items())
 
     def profit_loss(self):
         total_buy = sum(info["buy_price"]*info["quantity"] for info in self.owned_stocks.values())

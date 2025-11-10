@@ -13,8 +13,7 @@ class Stock:
         self.min_mult = self._apply_random_error(base_min_mult, 0.1)
         self.max_mult = self._apply_random_error(base_max_mult, 0.1)
 
-        # 선택 상태 표시
-        self.selected = False
+        self.selected = False  # 선택 상태 표시
 
     def _apply_random_error(self, value, error_ratio, min_val=None, max_val=None):
         delta = value * error_ratio
