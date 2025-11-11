@@ -472,7 +472,7 @@ class Game:
             pygame.draw.rect(self.screen, color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
             pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
-            text = font.render(f"{stock.name}: {stock.price}", True, UI.COLORS["text"])
+            text = font.render(f"{stock.name}: {stock.price:.2f}", True, UI.COLORS["text"])
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
 
@@ -696,179 +696,135 @@ class Game:
         # ---------------- 보유 종목 카드 (위치 및 스크롤 개선) ----------------
         
         # Y 시작 지점을 차트 패널 아래로 조정
+        # ---------------- 보유 종목 카드 (위치 및 스크롤 개선) ----------------
+        
+        # Y 시작 지점을 차트 패널 아래로 조정
         y_start = chart_panel_rect.bottom + 20 
         
         columns = ["종목명", "수", "총액", "변동폭", "구매가", "현재가"]
+        # 열 너비 (Asset Panel의 폭에 맞게 조정되었을 것으로 가정)
         base_col_widths = [120, 70, 100, 80, 100, 100] 
+        col_x_start = panel_x_assets # 자산 패널과 X 좌표 일치
         row_height = 30
+        
+        font_small = pygame.font.Font(self.font_path, 16)
+        
+        # 1. 헤더 그리기
+        # panel_width_assets 변수를 사용하여 헤더 영역의 폭을 지정합니다.
+        header_rect = pygame.Rect(col_x_start, y_start, panel_width_assets, row_height)
+        pygame.draw.rect(self.screen, (80, 80, 100), header_rect)
+        
+        current_x = col_x_start
+        for i, col_name in enumerate(columns):
+            text_surf = font_small.render(col_name, True, UI.COLORS["text"])
+            # 헤더는 중앙 정렬
+            text_rect = text_surf.get_rect(center=(current_x + base_col_widths[i] // 2, y_start + row_height // 2))
+            self.screen.blit(text_surf, text_rect)
+            current_x += base_col_widths[i]
+            # 열 구분선
+            if i < len(columns) - 1:
+                pygame.draw.line(self.screen, UI.COLORS["border_selected"], (current_x, y_start), (current_x, y_start + row_height))
+
+        # 데이터 표시 영역 설정 (스크롤 영역)
+        data_y_start = y_start + row_height
+        data_height = self.screen_height - data_y_start - 20 # 화면 하단 여백 20px
+        data_panel_rect = pygame.Rect(col_x_start, data_y_start, panel_width_assets, data_height)
+        
+        # 데이터 표시 영역 클리핑 설정 (이 영역을 벗어나는 내용은 숨김)
+        clip_rect = data_panel_rect.copy()
+        self.screen.set_clip(clip_rect)
 
         row_texts = []
         owned_stocks_list = list(self.player.owned_stocks.items())
-        for stock, info in owned_stocks_list:
+        
+        self.owned_row_rects = [] # 클릭 처리를 위한 Rect 저장
+
+        for idx, (stock, info) in enumerate(owned_stocks_list):
             qty = info["quantity"]
             current_value = stock.price * qty
             buy_total = info["buy_price"] * qty
-            profit_ratio = ((current_value - buy_total)/buy_total*100) if buy_total>0 else 0
-            row_texts.append([
-                stock.name,
-                f"{qty:.0f}",
-                f"{current_value:.2f}",
-                f"{profit_ratio:+.2f}%",
-                f"{info['buy_price']:.2f}",
-                f"{stock.price:.2f}"
-            ])
-
-        font_size = 18
-        font = pygame.font.Font(self.font_path, font_size)
-        col_widths = base_col_widths.copy()
-        for i, col in enumerate(columns):
-            text_width, _ = font.size(col)
-            col_widths[i] = max(col_widths[i], text_width + 10)
-            for row in row_texts:
-                w, _ = font.size(row[i])
-                if w + 10 > col_widths[i]:
-                    col_widths[i] = w + 10
-
-        panel_width = sum(col_widths)
-        
-        # 오른쪽 영역에 맞추기 위해 x 좌표는 총 자산 패널과 동일하게 시작
-        panel_x = panel_x_assets 
-
-        # [개선 2: 수직 스크롤 로직 명확화]
-        panel_max_width = self.screen_width - panel_x - margin_right # 차트 패널 너비 사용
-        needs_h_scroll = False
-        if panel_width > panel_max_width:
-            needs_h_scroll = True
-            visible_width = panel_max_width
-        else:
-            visible_width = panel_width
-
-        # 전체 필요한 높이
-        panel_needed_height = row_height * (len(row_texts) + 1)
-        
-        # 화면 최대 높이: Y 시작 지점부터 화면 끝까지의 여유 공간
-        panel_max_height = self.screen_height - y_start - 20 # 화면 하단 여백 20px
-        
-        needs_v_scroll = False
-        if panel_needed_height > panel_max_height:
-            needs_v_scroll = True
-            visible_height = panel_max_height
-        else:
-            visible_height = panel_needed_height
-
-        panel_rect = pygame.Rect(panel_x, y_start, visible_width, visible_height)
-        pygame.draw.rect(self.screen, (50,50,70), panel_rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-        pygame.draw.rect(self.screen, UI.COLORS["border_selected"], panel_rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
-
-        clip_rect = self.screen.get_clip()
-        self.screen.set_clip(panel_rect)
-
-        # ---------------- 보유 종목 내부 렌더링 (스크롤 반영) ----------------
-        
-        # X축 렌더링 (헤더)
-        x_start_col = panel_x - self.owned_scroll_x
-        x = x_start_col
-        y = y_start - self.owned_scroll_y
-        for i, col in enumerate(columns):
-            text = font.render(col, True, UI.COLORS["text"])
-            self.screen.blit(text, (x + 5, y + 5))
-            x += col_widths[i]
-
-        # 구분선 렌더링 (헤더 아래 선)
-        x = x_start_col
-        y = y_start
-        for w in col_widths:
-            x += w
-            # 세로선 (클리핑 때문에 끝까지 그려도 화면 밖은 잘림)
-            pygame.draw.line(self.screen, UI.COLORS["border_selected"], (x, y), (x, y + visible_height))
-        # 가로선
-        pygame.draw.line(self.screen, UI.COLORS["border_selected"], (panel_x, y + row_height), (panel_x + panel_width, y + row_height))
-
-        self.owned_row_rects = []
-        mouse_pos = pygame.mouse.get_pos()
-        y = y_start + row_height - self.owned_scroll_y
-        
-        # 행 렌더링
-        for idx, row in enumerate(row_texts):
-            row_y = y + idx * row_height
-            row_rect = pygame.Rect(panel_x, row_y, panel_width, row_height)
-            self.owned_row_rects.append(row_rect)
-
-            is_hovered = row_rect.collidepoint(mouse_pos)
-            is_selected = self.selected_owned_row == idx
-
-            # 배경 색상
-            if is_selected:
-                row_color = UI.COLORS["stock_selected"]
-            elif is_hovered:
-                row_color = UI.COLORS["button_hover"]
-            elif idx % 2 == 0:
-                row_color = (60, 60, 80)
-            else:
-                row_color = (45, 45, 65)
-
-            pygame.draw.rect(self.screen, row_color, row_rect)
             
-            # 선택된 행 테두리
-            if is_selected:
-                pygame.draw.rect(self.screen, UI.COLORS["coin_text"], row_rect, 2)
+            # 변동폭 (손익률) 계산
+            profit_loss = current_value - buy_total
+            profit_ratio = (profit_loss / buy_total * 100) if buy_total > 0 else 0
             
-            # 데이터 렌더링
-            x = x_start_col
-            for i, text_content in enumerate(row):
-                text_color = UI.COLORS["text"]
-                if i == 3: # 변동폭
-                    if "+" in text_content:
-                        text_color = UI.COLORS["profit"]
-                    elif "-" in text_content:
-                        text_color = UI.COLORS["loss"]
+            # 행의 Y 좌표 계산 (스크롤 위치 반영)
+            row_y = data_y_start + idx * row_height - self.owned_scroll_y
+            
+            # 행 배경 Rect (클릭 처리를 위해 클리핑 영역 밖에 저장)
+            row_rect_full = pygame.Rect(col_x_start, row_y, panel_width_assets, row_height)
+            self.owned_row_rects.append(row_rect_full)
+            
+            # 현재 행이 화면에 보이는지 확인 (클리핑된 영역 내에 있는지)
+            if row_rect_full.bottom > data_y_start and row_rect_full.top < data_panel_rect.bottom:
+            
+                # 선택된 행 강조
+                if idx == self.selected_owned_row:
+                    pygame.draw.rect(self.screen, UI.COLORS["stock_selected"], row_rect_full)
+                else:
+                    # 일반 행 배경 (홀수/짝수 구분)
+                    bg_color = (40, 40, 60) if idx % 2 == 0 else (50, 50, 70)
+                    pygame.draw.rect(self.screen, bg_color, row_rect_full)
                 
-                text = font.render(text_content, True, text_color)
+                current_x = col_x_start
                 
-                # 정렬 조정 (일부 항목은 오른쪽 정렬)
-                if i in [1, 2, 3, 4, 5]: 
-                    # 오른쪽 정렬
-                    text_rect = text.get_rect(right=x + col_widths[i] - 5, centery=row_y + row_height // 2)
-                else: 
-                    # 왼쪽 정렬 (종목명)
-                    text_rect = text.get_rect(left=x + 5, centery=row_y + row_height // 2)
+                # 셀 데이터 준비
+                cell_data = [
+                    stock.name,
+                    f"{qty:,.0f}",
+                    f"{current_value:,.2f}",
+                    f"{profit_ratio:+.2f}%", # 변동폭은 손익률로 표시
+                    f"{info['buy_price']:,.2f}",
+                    f"{stock.price:,.2f}"
+                ]
+                
+                for j, data in enumerate(cell_data):
+                    width = base_col_widths[j]
                     
-                self.screen.blit(text, text_rect)
-                x += col_widths[i]
-                
-            # 행 사이의 가로선
-            pygame.draw.line(self.screen, UI.COLORS["border_selected"], (panel_x, row_y + row_height), (panel_x + panel_width, row_y + row_height))
+                    # 텍스트 색상 설정
+                    text_color = UI.COLORS["text"]
+                    if j == 3: # 변동폭(손익률)
+                        if profit_ratio > 0: text_color = UI.COLORS["profit"]
+                        elif profit_ratio < 0: text_color = UI.COLORS["loss"]
+                    
+                    text_surf = font_small.render(data, True, text_color)
+                    
+                    # 정렬: 종목명은 왼쪽, 나머지는 오른쪽 정렬
+                    if j == 0: # 종목명 (왼쪽 정렬)
+                        text_rect = text_surf.get_rect(midleft=(current_x + 5, row_y + row_height // 2))
+                    else: # 나머지 (오른쪽 정렬)
+                        text_rect = text_surf.get_rect(midright=(current_x + width - 5, row_y + row_height // 2))
 
-
-        # 클리핑 해제
-        self.screen.set_clip(clip_rect)
+                    self.screen.blit(text_surf, text_rect)
+                    current_x += width
+                        
+        # 클리핑 해제 (화면 전체에 다시 그릴 수 있도록 복구)
+        self.screen.set_clip(None) 
         
-        # ---------------- 스크롤 바 렌더링 (보유 종목) ----------------
-        if needs_v_scroll:
-            v_scroll_x = panel_x + visible_width - 15 
-            v_scroll_y = y_start + row_height # 헤더 제외
-            v_scroll_height = visible_height - row_height # 헤더 제외
+        # 2. 보유 종목 스크롤 바 그리기 (수직 스크롤)
+        panel_needed_height = len(owned_stocks_list) * row_height
+        max_scroll_y = max(0, panel_needed_height - data_height)
+        
+        if max_scroll_y > 0:
+            scroll_x = data_panel_rect.right + 5
+            scroll_y = data_panel_rect.top
+            scroll_height = data_panel_rect.height
             
-            # 스크롤 영역
-            scroll_rect = pygame.Rect(v_scroll_x, v_scroll_y, 10, v_scroll_height)
+            # 스크롤 영역 배경
+            scroll_rect = pygame.Rect(scroll_x, scroll_y, 10, scroll_height)
             pygame.draw.rect(self.screen, (100,100,100), scroll_rect, border_radius=5)
-            
-            # 핸들 계산
-            handle_ratio = visible_height / panel_needed_height
-            handle_min_height = 20
-            handle_height = max(handle_min_height, int(v_scroll_height * handle_ratio))
-            
-            scrollable_area = panel_needed_height - visible_height
-            handle_scroll_range = v_scroll_height - handle_height
-            
-            if scrollable_area > 0:
-                handle_y_offset = (self.owned_scroll_y / scrollable_area) * handle_scroll_range
-            else:
-                handle_y_offset = 0
 
-            handle_y = v_scroll_y + handle_y_offset
+            # 핸들 크기 계산
+            handle_ratio = data_height / panel_needed_height
+            handle_min_height = 20
+            handle_height = max(handle_min_height, int(scroll_height * handle_ratio))
             
-            self.owned_v_scroll_handle_rect = pygame.Rect(v_scroll_x, handle_y, 10, handle_height)
+            # 핸들 위치 계산
+            scrollable_area = scroll_height - handle_height
+            # self.owned_scroll_y 값에 따라 핸들 위치 결정
+            handle_y = scroll_y + (self.owned_scroll_y / max_scroll_y) * scrollable_area
+            
+            self.owned_v_scroll_handle_rect = pygame.Rect(scroll_x, handle_y, 10, handle_height)
             pygame.draw.rect(self.screen, (180,180,180), self.owned_v_scroll_handle_rect, border_radius=5)
         else:
             self.owned_v_scroll_handle_rect = None
