@@ -1,3 +1,5 @@
+# classes/game.py
+
 import pygame
 import time
 import random
@@ -5,18 +7,22 @@ from classes.stock import Stock
 from classes.player import Player
 from classes.ui_config import UIConfig as UI
 from classes.data_manager import DataManager
-
+from classes.shop import Shop
 class Game:
     def __init__(self):
         pygame.init()
         self.screen_width, self.screen_height = 1280, 720
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption("랜덤 코인 게임 v0.3.4 통합 (차트 시각화 추가)")
+        pygame.display.set_caption("랜덤 코인 게임 v0.6 통합 (메인 주식 기능구현)")
         self.clock = pygame.time.Clock()
         self.running = True
 
+        
         # 플레이어
         self.player = Player()
+
+        # ⭐️ 상점 초기화
+        self.shop = Shop()
 
         # 종목 데이터 관리
         self.data_manager = DataManager()
@@ -33,17 +39,17 @@ class Game:
             stocks = []
             for item in data_list[:20]:
                 if cur == "원":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.01, base_max_mult=2000, bias=0.51))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.01, max_gain_mult=20, bias=0.51))
                 elif cur == "코인":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.03, base_max_mult=7000, bias=0.58))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.02, max_gain_mult=7, bias=0.58))
                 elif cur == "금":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.05, base_max_mult=12000, bias=0.64))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.2, max_gain_mult=12, bias=0.64))
                 elif cur == "스탁":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.07, base_max_mult=100000, bias=0.71))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.25, max_gain_mult=100, bias=0.71))
             self.stocks_by_currency[cur] = stocks
 
         # 초기 차트 데이터 생성을 위해 몇 번 업데이트 실행 (선택 사항)
-        for _ in range(30):
+        for _ in range(5):
             for stock_list in self.stocks_by_currency.values():
                 for stock in stock_list:
                     stock.update_price()
@@ -60,6 +66,11 @@ class Game:
             "코인": pygame.Rect(110, 20, 80, 30),
             "금": pygame.Rect(200, 20, 80, 30),
             "스탁": pygame.Rect(290, 20, 80, 30),
+            # ⭐️ 상점 버튼 추가 (290 + 80 + 10 = 380)
+            "상점": pygame.Rect(380, 20, 80, 30),
+            
+            # ⭐️ 교환 버튼 추가 (380 + 80 + 10 = 470)
+            "교환": pygame.Rect(470, 20, 80, 30),
         }
 
         # 종목 버튼 20개
@@ -83,7 +94,7 @@ class Game:
         self.selected_owned_row = -1
         self.selected_owned_stock_info = None
         
-        # [추가] 보유 종목 스크롤 관련 변수
+        # 보유 종목 스크롤 관련 변수
         self.owned_scroll_x = 0
         self.owned_scroll_y = 0
         self.owned_scroll_dragging = False
@@ -126,12 +137,27 @@ class Game:
                 # 화폐 단위 버튼 클릭
                 for cur, rect in self.currency_buttons.items():
                     if rect.collidepoint(event.pos):
-                        if self.selected_currency != cur:
-                            self.selected_currency = cur
-                            self.scroll_index = 0
-                            self.selected_stock = None
-                            self.selected_owned_stock_info = None
-                            self.stocks = self.stocks_by_currency[cur]
+                        if cur in ["원", "코인", "금", "스탁"]:
+                            if self.selected_currency != cur:
+                                self.selected_currency = cur
+                                self.scroll_index = 0
+                                self.selected_stock = None
+                                self.selected_owned_stock_info = None
+                                self.stocks = self.stocks_by_currency[cur]
+                        
+                        elif cur == "상점":
+                            # ⭐️ 상점 버튼 클릭 시 동작 정의
+                            print("상점 버튼 클릭됨")
+                            
+                            #1. 상점 UI를 연다
+                            #2. 상점 UI에는
+                            # 예: self.open_shop_ui()
+                            
+                        elif cur == "교환":
+                            # ⭐️ 교환 버튼 클릭 시 동작 정의
+                            print("교환 버튼 클릭됨")
+                            
+                            # 예: self.open_exchange_ui()
 
                 # 마우스 휠 (일반 종목 리스트)
                 if event.button == 4:
@@ -349,7 +375,7 @@ class Game:
     # ---------------- 가격 업데이트 ----------------
     def update_game(self):
         current_time = time.time()
-        if current_time - self.last_update >= 10:
+        if current_time - self.last_update >= 2:
             for stock_list in self.stocks_by_currency.values():
                 for stock in stock_list:
                     # Stock.update_price()가 이제 price_history를 업데이트합니다.
@@ -431,23 +457,76 @@ class Game:
         # 화폐 단위 버튼 (기존 로직 유지)
         for cur, rect in self.currency_buttons.items():
             mouse_pos = pygame.mouse.get_pos()
-            if rect.collidepoint(mouse_pos) or self.selected_currency == cur:
+            if cur == "상점":
+                # 연분홍색 계열
+                base_color = (255, 192, 203) 
+                hover_color = (255, 223, 230)
+                border_color = (255, 105, 180) # 진한 분홍색 테두리
+                text_color = UI.COLORS["store_text"]
+
+            elif cur == "교환":
+                # 연두색 계열
+                base_color = (144, 238, 144) 
+                hover_color = (192, 255, 192)
+                border_color = (50, 205, 50) # 진한 연두색 테두리
+                text_color = UI.COLORS["exchange_text"]
+
+            elif rect.collidepoint(mouse_pos) or self.selected_currency == cur:
+                # 기존 선택/호버 상태 (원, 코인, 금, 스탁)
                 color = UI.COLORS["button_hover"]
+                border_color = UI.COLORS["coin_text"] if self.selected_currency == cur else UI.COLORS["border_selected"]
+                base_color = color
+                text_color = UI.COLORS["text"]
+            else:
+                # 기존 일반 상태 (원, 코인, 금, 스탁)
+                color = UI.COLORS["button"]
+                border_color = UI.COLORS["border_selected"]
+                base_color = color
+                text_color = UI.COLORS["text"]
+
+            # 버튼 배경색 설정
+            if rect.collidepoint(mouse_pos) or self.selected_currency == cur:
+                draw_color = hover_color if cur in ["상점", "교환"] else base_color
+            else:
+                draw_color = base_color
+            
+            # 원, 코인, 금, 스탁 버튼에는 UI.COLORS["button"]을 사용하고,
+            # 상점/교환 버튼에는 정의된 색상을 사용하도록 최종 선택
+            if cur in ["상점", "교환"]:
+                final_draw_color = hover_color if rect.collidepoint(mouse_pos) else base_color
+                final_border_color = border_color
+            elif rect.collidepoint(mouse_pos) or self.selected_currency == cur:
+                 final_draw_color = UI.COLORS["button_hover"]
+                 final_border_color = UI.COLORS["coin_text"] if self.selected_currency == cur else UI.COLORS["border_selected"]
+            else:
+                 final_draw_color = UI.COLORS["button"]
+                 final_border_color = UI.COLORS["border_selected"]
+            
+            # 폰트 설정 (기존 로직 유지)
+            if rect.collidepoint(mouse_pos) or self.selected_currency == cur:
                 font_size = int(rect.height * UI.BUTTON_FONT_RATIO * 1.2)
                 font = pygame.font.Font(self.font_path, font_size)
                 font.set_bold(True)
             else:
-                color = UI.COLORS["button"]
                 font_size = int(rect.height * UI.BUTTON_FONT_RATIO)
                 font = pygame.font.Font(self.font_path, font_size)
 
-            pygame.draw.rect(self.screen, color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-            if self.selected_currency == cur:
+            # 버튼 그리기
+            pygame.draw.rect(self.screen, final_draw_color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
+            
+            # 테두리 그리기
+            if self.selected_currency == cur and cur not in ["상점", "교환"]:
+                 # 화폐 버튼 선택 시 강조 테두리
                  pygame.draw.rect(self.screen, UI.COLORS["coin_text"], rect, 3, border_radius=UI.BUTTON_BORDER_RADIUS)
+            elif cur in ["상점", "교환"]:
+                 # 상점/교환 버튼은 자체 정의된 테두리
+                 pygame.draw.rect(self.screen, final_border_color, rect, 3, border_radius=UI.BUTTON_BORDER_RADIUS)
             else:
-                pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
-
-            text = font.render(cur, True, UI.COLORS["text"])
+                 # 일반/미선택 테두리
+                 pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
+            
+            # 텍스트 렌더링
+            text = font.render(cur, True, text_color)
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
 
@@ -472,7 +551,14 @@ class Game:
             pygame.draw.rect(self.screen, color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
             pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
-            text = font.render(f"{stock.name}: {stock.price:.2f}", True, UI.COLORS["text"])
+            # 🟢 수정 3: 종목 가격에 포매팅 적용
+            price_str =format_large_number(stock.price, "") # 단위는 빈 문자열로 넘김
+            text = font.render(
+                f"{stock.name} | {price_str} | ({stock.currency})", # ⭐️ 새로운 포맷 적용
+                True, 
+                UI.COLORS["text"]
+            )   
+
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
 
@@ -505,8 +591,18 @@ class Game:
         margin_right = 20 
         total_assets = self.player.total_assets()
         total_str = f"총 보유자산: {total_assets:.2f} 원"
+        total_str = f"총 보유자산: {format_large_number(total_assets, '원')}"
+
         assets = self.player.assets_by_currency()
-        currency_str = f"현금: 원 {assets['원']:.2f} | 코인 {assets['코인']:.2f} | 금 {assets['금']:.2f} | 스탁 {assets['스탁']:.2f}"
+        # 🟢화폐별 현금에 포매팅 적용 (단위는 빈 문자열로 넘겨서, '원'만 표시하지 않게 함)
+        currency_str = (
+            f"현금: "
+            f"원 {format_large_number(assets['원'], '')} | " 
+            f"코인 {format_large_number(assets['코인'], '')} | " 
+            f"금 {format_large_number(assets['금'], '')} | " 
+            f"스탁 {format_large_number(assets['스탁'], '')}" 
+        )
+
         font_size = self.base_font_size
         font = pygame.font.Font(self.font_path, font_size)
         total_width = font.size(total_str)[0]
@@ -591,15 +687,15 @@ class Game:
                     f"[{stock.name}] 보유: {current_owned_qty:.0f}개 / "
                     f"{exec_label}: {current_qty:.0f}개"
                 )
-                total_str = f"총액: {total_amount:.2f} {currency_unit}"
 
                 font = pygame.font.Font(self.font_path, 18)
                 text = font.render(display_str, True, UI.COLORS["text"])
                 self.screen.blit(text, (panel_x + 10, panel_y + 5))
                 
-                total_text = font.render(total_str, True, total_color)
-                total_rect = total_text.get_rect(right=panel_x + panel_width - 10, top=panel_y + 5)
-                self.screen.blit(total_text, total_rect)
+                #total_str = f"총액: {total_amount:.2f} {currency_unit}"
+                #total_text = font.render(total_str, True, total_color)
+                #total_rect = total_text.get_rect(right=panel_x + panel_width - 10, top=panel_y + 5)
+                #self.screen.blit(total_text, total_rect)
 
 
                 btn_gap = 5
@@ -696,14 +792,11 @@ class Game:
         # ---------------- 보유 종목 카드 (위치 및 스크롤 개선) ----------------
         
         # Y 시작 지점을 차트 패널 아래로 조정
-        # ---------------- 보유 종목 카드 (위치 및 스크롤 개선) ----------------
-        
-        # Y 시작 지점을 차트 패널 아래로 조정
         y_start = chart_panel_rect.bottom + 20 
         
         columns = ["종목명", "수", "총액", "변동폭", "구매가", "현재가"]
         # 열 너비 (Asset Panel의 폭에 맞게 조정되었을 것으로 가정)
-        base_col_widths = [120, 70, 100, 80, 100, 100] 
+        base_col_widths = [140, 90, 110, 100, 100, 100] 
         col_x_start = panel_x_assets # 자산 패널과 X 좌표 일치
         row_height = 30
         
@@ -768,14 +861,23 @@ class Game:
                 
                 current_x = col_x_start
                 
-                # 셀 데이터 준비
+                # 1. 🟢 큰 숫자 포매팅 적용
+                formatted_qty = format_large_number(qty, "")
+                formatted_total = format_large_number(current_value, "")
+                formatted_profit_ratio = format_large_number(profit_ratio, "")
+                formatted_buy_price = format_large_number(info['buy_price'], "")
+                formatted_current_price = format_large_number(stock.price, "")
+                
+                # 2. 🟢 셀 데이터 구성 (포매팅된 금액 + 화폐 단위)
+                # 화폐 단위는 stock 객체의 currency 속성을 사용합니다.
+                # 2. 🟢 셀 데이터 구성
                 cell_data = [
-                    stock.name,
-                    f"{qty:,.0f}",
-                    f"{current_value:,.2f}",
-                    f"{profit_ratio:+.2f}%", # 변동폭은 손익률로 표시
-                    f"{info['buy_price']:,.2f}",
-                    f"{stock.price:,.2f}"
+                    f"{stock.name} ({stock.currency})", 
+                    formatted_qty,                              # ⭐️ 포매팅된 수량 사용
+                    formatted_total,                   
+                    f"{formatted_profit_ratio}%", 
+                    formatted_buy_price,              
+                    formatted_current_price            
                 ]
                 
                 for j, data in enumerate(cell_data):
@@ -829,7 +931,7 @@ class Game:
         else:
             self.owned_v_scroll_handle_rect = None
 
-
+            
     # ---------------- 실행 ----------------
     def run(self):
         while self.running:
@@ -839,3 +941,56 @@ class Game:
             pygame.display.flip()
             self.clock.tick(60)
         pygame.quit()
+
+def format_large_number(number, currency_unit="원"):
+        """
+        숫자를 억, 조, 경, 해, 자, 양 단위로 압축하여 표시하고,
+        실제 값은 그대로 유지되도록 포맷팅합니다.
+        """
+        
+        # 단위 및 해당 지수 (10^n) 정의
+        units = [
+            (10**64, "무량대수"),
+            (10**60, "불가사의"),
+            (10**56, "아승기"), 
+            (10**52, "정"), 
+            (10**48, "재"), 
+            (10**44, "극"), 
+            (10**40, "항하사"), 
+            (10**36, "간"), 
+            (10**32, "구"),
+            (10**28, "양"),
+            (10**24, "자"),
+            (10**20, "해"),
+            (10**16, "경"), 
+            (10**12, "조"), 
+            (10**8, "억"), 
+            (10**4, "만"),
+        ]
+        
+        # 1. 1만 미만은 소수점 둘째 자리까지 표시
+        if abs(number) < 10**4:
+            # 천 단위마다 콤마를 찍고, 소수점 제거(둘째 자리)까지 표시합니다.
+            # 예: 99,999,999.99원
+            return f"{number:,.3f} {currency_unit}"
+
+        # 2. 억 단위 이상 포맷팅
+        abs_number = abs(number)
+        sign = "-" if number < 0 else ""
+
+        # 경, 조, 억 처리
+        for divisor, unit_name in units:
+            if abs_number >= divisor:
+                # 해당 단위로 나눈 값을 소수점 없이(둘째 자리)까지 표시
+                value = abs_number / divisor
+                return f"{sign}{value:,.0f}{unit_name} {currency_unit}"
+                
+        # 3. 해, 자, 양 단위 처리 (4자리씩 증가)
+        # 현재 코드에서는 경까지만 명시적으로 정의하여 충분하지만, 
+        # 요구사항에 맞게 조 단위 이상의 더 큰 단위 처리 로직을 추가할 수 있습니다.
+        
+        # 경(10^16)을 초과하는 경우는 현재 로직에서 '경'으로 표시되지만, 
+        # 10000경 (1해) 이상은 다음 단위를 적용해야 합니다.
+
+        # 만약 위의 모든 조건에 해당하지 않으면 (오류 방지)
+        return f"{sign}{abs_number:,.2f} {currency_unit}"

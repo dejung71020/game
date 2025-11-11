@@ -1,3 +1,4 @@
+# classes/ui_config.py
 class UIConfig:
     FONT_PATH = "C:/Windows/Fonts/malgun.ttf"
     FONT_SIZE = 28
@@ -21,6 +22,8 @@ class UIConfig:
         "row_selected": (100,100,150), # 클릭 시 선택 배경
         "disabled": (40, 40, 40), # 예시: 짙은 회색
         "text_disabled": (100, 100, 100),
+        "store_text" : (128, 0, 128),
+        "exchange_text" : (0, 100, 0),
     }
 
     POS = {
