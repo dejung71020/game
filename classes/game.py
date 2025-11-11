@@ -1,5 +1,6 @@
 import pygame
 import time
+import random
 from classes.stock import Stock
 from classes.player import Player
 from classes.ui_config import UIConfig as UI
@@ -10,7 +11,7 @@ class Game:
         pygame.init()
         self.screen_width, self.screen_height = 1280, 720
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption("랜덤 코인 게임 v0.2.3 통합")
+        pygame.display.set_caption("랜덤 코인 게임 v0.2.6 통합 (UI 수직 배치)")
         self.clock = pygame.time.Clock()
         self.running = True
 
@@ -20,7 +21,7 @@ class Game:
         # 종목 데이터 관리
         self.data_manager = DataManager()
         
-        # 화폐 단위별 종목 20개
+        # 화폐 단위별 종목 20개 초기화
         self.stocks_by_currency = {
             "원": [],
             "코인": [],
@@ -45,8 +46,8 @@ class Game:
         self.selected_currency = "원"
         self.stocks = self.stocks_by_currency[self.selected_currency]
         self.selected_stock = None
-        self.selected_owned_currency = "원"  # 보유종목 필터 초기값
-        
+        self.selected_owned_currency = "원" 
+
         # 화폐 단위 버튼
         self.currency_buttons = {
             "원": pygame.Rect(20, 20, 80, 30),
@@ -57,9 +58,9 @@ class Game:
 
         # 종목 버튼 20개
         self.stock_buttons = [pygame.Rect(UI.POS["stock_list_x"],
-                                          UI.POS["stock_list_y"] + i*UI.POS["stock_gap"],
-                                          UI.POS["stock_width"],
-                                          UI.POS["stock_height"]) for i in range(20)]
+                                            UI.POS["stock_list_y"] + i*UI.POS["stock_gap"],
+                                            UI.POS["stock_width"],
+                                            UI.POS["stock_height"]) for i in range(20)]
 
         # 스크롤 관련
         self.scroll_index = 0
@@ -67,21 +68,29 @@ class Game:
         self.scroll_dragging = False
         self.scroll_handle_rect = pygame.Rect(410, UI.POS["stock_list_y"], 10, 200)
 
-        # 구매 버튼 및 수량
+        # ------------------- 거래 관련 상태 변수 -------------------
         self.purchase_qty = 1
-        self.buttons = {
-            "minus": pygame.Rect(450, UI.POS["purchase_y"], 30, UI.POS["stock_height"]),
-            "plus": pygame.Rect(490, UI.POS["purchase_y"], 30, UI.POS["stock_height"]),
-            "pct_10": pygame.Rect(530, UI.POS["purchase_y"], 50, UI.POS["stock_height"]),
-            "pct_25": pygame.Rect(590, UI.POS["purchase_y"], 50, UI.POS["stock_height"]),
-            "pct_50": pygame.Rect(650, UI.POS["purchase_y"], 50, UI.POS["stock_height"]),
-            "pct_100": pygame.Rect(710, UI.POS["purchase_y"], 60, UI.POS["stock_height"]),
-            "buy": pygame.Rect(780, UI.POS["purchase_y"], 80, UI.POS["stock_height"]),
-            "sell": pygame.Rect(780, UI.POS["purchase_y"], 80, UI.POS["stock_height"]),  # 추가
-        }
+        self.sell_qty = 0
+        self.selected_owned_row = -1
+        self.selected_owned_stock_info = None
 
-        self.insufficient_funds_msg = None  # 부족 금액 메시지
-        self.msg_timer = 0  # 메시지 표시 시간
+        # 버튼의 기본 Rect (위치는 0,0)
+        self.buttons = {
+            "minus": pygame.Rect(0, 0, 30, UI.POS["stock_height"]),
+            "plus": pygame.Rect(0, 0, 30, UI.POS["stock_height"]),
+            "pct_10": pygame.Rect(0, 0, 50, UI.POS["stock_height"]),
+            "pct_25": pygame.Rect(0, 0, 50, UI.POS["stock_height"]),
+            "pct_50": pygame.Rect(0, 0, 50, UI.POS["stock_height"]),
+            "pct_100": pygame.Rect(0, 0, 60, UI.POS["stock_height"]),
+            "buy_exec": pygame.Rect(0, 0, 80, UI.POS["stock_height"]),
+            "sell_exec": pygame.Rect(0, 0, 80, UI.POS["stock_height"]),
+        }
+        
+        self.buy_buttons = {}
+        self.sell_buttons = {}
+
+        self.insufficient_funds_msg = None
+        self.msg_timer = 0
 
         # 가격 갱신
         self.last_update = time.time()
@@ -91,7 +100,6 @@ class Game:
         self.base_font_size = UI.FONT_SIZE
         self.font = pygame.font.Font(self.font_path, self.base_font_size)
 
-
     # ---------------- 이벤트 처리 ----------------
     def handle_events(self):
         for event in pygame.event.get():
@@ -99,8 +107,6 @@ class Game:
                 self.running = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                x, y = event.pos
-
                 # 화폐 단위 버튼 클릭
                 for cur, rect in self.currency_buttons.items():
                     if rect.collidepoint(event.pos):
@@ -108,19 +114,21 @@ class Game:
                             self.selected_currency = cur
                             self.scroll_index = 0
                             self.selected_stock = None
+                            self.selected_owned_stock_info = None
                             self.stocks = self.stocks_by_currency[cur]
 
                 # 마우스 휠
                 if event.button == 4:
                     self.scroll_index = max(0, self.scroll_index - 1)
                 elif event.button == 5:
-                    self.scroll_index = min(len(self.stocks) - self.visible_count, self.scroll_index + 1)
+                    max_scroll = max(0, len(self.stocks) - self.visible_count)
+                    self.scroll_index = min(max_scroll, self.scroll_index + 1)
 
                 # 스크롤 핸들 클릭
                 if self.scroll_handle_rect.collidepoint(event.pos):
                     self.scroll_dragging = True
 
-                # 종목 선택
+                # 종목 선택 (매수 대상)
                 for i, stock in enumerate(self.stocks[self.scroll_index:self.scroll_index+self.visible_count]):
                     rect = self.stock_buttons[i]
                     if rect.collidepoint(event.pos):
@@ -128,67 +136,141 @@ class Game:
                             s.selected = False
                         stock.selected = True
                         self.selected_stock = stock
+                        self.purchase_qty = 1
+                        self.sell_qty = 0
+                        self.selected_owned_stock_info = None
+                        self.selected_owned_row = -1
 
-                # 구매 버튼
+                # 보유 종목 카드 클릭 (매도 대상)
+                if hasattr(self, "owned_row_rects"):
+                    for idx, row_rect in enumerate(self.owned_row_rects):
+                        if row_rect.collidepoint(event.pos):
+                            owned_stocks_list = list(self.player.owned_stocks.keys())
+                            
+                            if idx < len(owned_stocks_list):
+                                stock_to_sell = owned_stocks_list[idx]
+                                
+                                self.selected_owned_row = idx
+                                self.selected_owned_stock_info = (stock_to_sell, self.player.owned_stocks[stock_to_sell])
+                                
+                                if self.selected_stock:
+                                    self.selected_stock.selected = False
+                                stock_to_sell.selected = True
+                                self.selected_stock = stock_to_sell 
+                                
+                                max_sell_qty = self.player.owned_stocks[stock_to_sell]['quantity']
+                                self.sell_qty = max(1, max_sell_qty)
+                                self.purchase_qty = 0
+                                break
+
+                # 구매/판매 버튼 처리 - 위치 기반 분리
                 if self.selected_stock:
-                    for key, rect in self.buttons.items():
-                        if rect.collidepoint(event.pos):
-                            self.handle_purchase_buttons(key)
+                    pos = event.pos
+                    
+                    # 1. 구매 UI 버튼 클릭 확인 (is_selling=False)
+                    for key, rect in self.buy_buttons.items():
+                        if rect.collidepoint(pos):
+                            self.handle_purchase_buttons(key, is_selling=False) 
+                            return 
+
+                    # 2. 판매 UI 버튼 클릭 확인 (is_selling=True)
+                    for key, rect in self.sell_buttons.items():
+                        if rect.collidepoint(pos):
+                            self.handle_purchase_buttons(key, is_selling=True) 
+                            return 
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 self.scroll_dragging = False
 
             elif event.type == pygame.MOUSEMOTION and self.scroll_dragging:
                 # 스크롤 핸들 드래그
-                mouse_y = event.pos[1]
                 scroll_area_y = UI.POS["stock_list_y"]
                 scroll_area_height = self.visible_count * UI.POS["stock_gap"]
                 handle_height = self.scroll_handle_rect.height
+                
+                mouse_y = event.pos[1]
                 mouse_y = max(scroll_area_y, min(mouse_y, scroll_area_y + scroll_area_height - handle_height))
                 self.scroll_handle_rect.y = mouse_y
 
                 # scroll_index 계산
                 ratio = (mouse_y - scroll_area_y) / (scroll_area_height - handle_height)
-                self.scroll_index = int(ratio * (len(self.stocks) - self.visible_count))
+                max_scroll = len(self.stocks) - self.visible_count
+                self.scroll_index = int(ratio * max_scroll)
 
 
-    # ---------------- 구매 버튼 처리 ----------------
-    def handle_purchase_buttons(self, key):
+    # ---------------- 구매/판매 버튼 처리 (is_selling 매개변수 사용) ----------------
+    def handle_purchase_buttons(self, key, is_selling):
         if not self.selected_stock:
             return
 
-        currency = self.selected_stock.currency
-        available_cash = self.player.cash[currency]
-        max_qty = int(available_cash / self.selected_stock.price)
+        stock = self.selected_stock
+        currency = stock.currency
+
+        if is_selling:
+            # --- 판매 모드 설정 ---
+            available_qty = self.player.owned_stocks.get(stock, {}).get("quantity", 0)
+            target_qty = self.sell_qty
+            max_qty = available_qty
+            if max_qty == 0:
+                 self.selected_owned_stock_info = None
+                 return
+        else:
+            # --- 구매 모드 설정 ---
+            available_cash = self.player.cash[currency]
+            max_qty = int(available_cash / stock.price)
+            target_qty = self.purchase_qty
+
+        # 수량 설정 버튼 처리 (공통)
+        new_qty = target_qty
 
         if key == "minus":
-            if self.purchase_qty > 1:
-                self.purchase_qty -= 1
+            new_qty = max(0, target_qty - 1)
         elif key == "plus":
-            if self.purchase_qty < max_qty:
-                self.purchase_qty += 1
+            new_qty = min(max_qty, target_qty + 1)
         elif key == "pct_10":
-            self.purchase_qty = max(1, int(max_qty * 0.1))
+            new_qty = min(max_qty, max(1, int(max_qty * 0.1))) if max_qty > 0 else 0
         elif key == "pct_25":
-            self.purchase_qty = max(1, int(max_qty * 0.25))
+            new_qty = min(max_qty, max(1, int(max_qty * 0.25))) if max_qty > 0 else 0
         elif key == "pct_50":
-            self.purchase_qty = max(1, int(max_qty * 0.5))
+            new_qty = min(max_qty, max(1, int(max_qty * 0.5))) if max_qty > 0 else 0
         elif key == "pct_100":
-            self.purchase_qty = max(1, max_qty)
-        elif key == "buy":
-            total_cost = self.selected_stock.price * self.purchase_qty
-            if available_cash >= total_cost:
-                success = self.player.invest(self.selected_stock, self.purchase_qty)
-                if not success:
-                    self.show_insufficient_funds(currency, total_cost, available_cash)
-            else:
-                self.show_insufficient_funds(currency, total_cost, available_cash)
+            new_qty = max_qty
 
-    # ---------------- 부족 금액 알림 ----------------
-    def show_insufficient_funds(self, currency, required, available):
+        # 수량 업데이트: 해당 모드의 변수만 변경
+        if is_selling:
+            self.sell_qty = new_qty
+        else:
+            self.purchase_qty = new_qty
+
+        # --- 실행 버튼 처리 ---
+        if key == "buy_exec":
+            total_cost = stock.price * self.purchase_qty
+            if self.purchase_qty > 0 and self.player.cash[currency] >= total_cost:
+                success = self.player.invest(stock, self.purchase_qty)
+                if success:
+                    self.purchase_qty = 1
+            else:
+                self.show_insufficient_funds(currency, total_cost, self.player.cash[currency])
+        
+        elif key == "sell_exec":
+            if self.sell_qty > 0 and self.sell_qty <= available_qty:
+                success = self.player.sell(stock, self.sell_qty)
+                if success:
+                    if stock not in self.player.owned_stocks:
+                        self.selected_owned_stock_info = None 
+                        self.selected_owned_row = -1
+                    self.sell_qty = 0
+            else:
+                 self.show_insufficient_funds("보유 수량", self.sell_qty, available_qty, is_selling=True)
+
+    # ---------------- 부족 금액/수량 알림 ----------------
+    def show_insufficient_funds(self, currency_or_item, required, available, is_selling=False):
         missing = required - available
-        self.insufficient_funds_msg = f"{currency} 잔액 부족! {missing:.2f} 필요"
-        self.msg_timer = pygame.time.get_ticks()  # 메시지 시작 시간
+        if is_selling:
+            self.insufficient_funds_msg = f"{currency_or_item} 부족! {missing:.0f}개 초과"
+        else:
+            self.insufficient_funds_msg = f"{currency_or_item} 잔액 부족! {missing:.2f} 필요"
+        self.msg_timer = pygame.time.get_ticks() 
 
     # ---------------- 가격 업데이트 ----------------
     def update_game(self):
@@ -198,7 +280,6 @@ class Game:
                 for stock in stock_list:
                     stock.update_price()
             self.last_update = current_time
-
 
     # ---------------- UI 그리기 ----------------
     def get_auto_font(self, rect, ratio=UI.BUTTON_FONT_RATIO):
@@ -211,14 +292,12 @@ class Game:
             val = UI.BG_COLOR_BASE[0] + i // UI.GRADIENT_STEP
             pygame.draw.line(self.screen, (val, val, val+20), (0,i), (self.screen_width,i))
 
-        # 화폐 단위 버튼
+        # 화폐 단위 버튼 (생략)
         for cur, rect in self.currency_buttons.items():
             mouse_pos = pygame.mouse.get_pos()
-
-            # hover 효과
-            if rect.collidepoint(mouse_pos):
+            if rect.collidepoint(mouse_pos) or self.selected_currency == cur:
                 color = UI.COLORS["button_hover"]
-                font_size = int(rect.height * UI.BUTTON_FONT_RATIO * 1.2)  # 20% 커짐
+                font_size = int(rect.height * UI.BUTTON_FONT_RATIO * 1.2)
                 font = pygame.font.Font(self.font_path, font_size)
                 font.set_bold(True)
             else:
@@ -227,26 +306,30 @@ class Game:
                 font = pygame.font.Font(self.font_path, font_size)
 
             pygame.draw.rect(self.screen, color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-            pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
+            if self.selected_currency == cur:
+                 pygame.draw.rect(self.screen, UI.COLORS["coin_text"], rect, 3, border_radius=UI.BUTTON_BORDER_RADIUS)
+            else:
+                pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
             text = font.render(cur, True, UI.COLORS["text"])
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
 
-
-        # 종목 리스트 (스크롤 적용)
+        # 종목 리스트 (생략)
         for i, stock in enumerate(self.stocks[self.scroll_index:self.scroll_index+self.visible_count]):
             rect = self.stock_buttons[i]
             mouse_pos = pygame.mouse.get_pos()
 
-            # hover 색상 + 선택 색상
-            if rect.collidepoint(mouse_pos):
-                color = UI.COLORS["button_hover"]
+            is_hovered = rect.collidepoint(mouse_pos)
+            is_selected = stock.selected
+
+            if is_hovered or is_selected:
+                color = UI.COLORS["stock_selected"] if is_selected else UI.COLORS["button_hover"]
                 font_size = int(rect.height * UI.BUTTON_FONT_RATIO * 1.2)
                 font = pygame.font.Font(self.font_path, font_size)
                 font.set_bold(True)
             else:
-                color = UI.COLORS["stock_selected"] if stock.selected else UI.COLORS["stock_normal"]
+                color = UI.COLORS["stock_normal"]
                 font_size = int(rect.height * UI.BUTTON_FONT_RATIO)
                 font = pygame.font.Font(self.font_path, font_size)
 
@@ -257,176 +340,174 @@ class Game:
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
 
-        # 스크롤 바
+        # 스크롤 바 (생략)
         scroll_x = UI.POS["stock_list_x"] + UI.POS["stock_width"] + 5
         scroll_y = UI.POS["stock_list_y"]
         scroll_height = self.visible_count * UI.POS["stock_gap"]
         scroll_rect = pygame.Rect(scroll_x, scroll_y, 10, scroll_height)
         pygame.draw.rect(self.screen, (100,100,100), scroll_rect, border_radius=5)
-        pygame.draw.rect(self.screen, (180,180,180), self.scroll_handle_rect, border_radius=5)
+        
+        if len(self.stocks) > self.visible_count:
+            handle_ratio = self.visible_count / len(self.stocks)
+            handle_min_height = 20
+            handle_height = max(handle_min_height, int(scroll_height * handle_ratio))
+            
+            if not self.scroll_dragging:
+                scrollable_area = scroll_height - handle_height
+                max_scroll_index = len(self.stocks) - self.visible_count
+                if max_scroll_index > 0:
+                    handle_y = scroll_y + (self.scroll_index / max_scroll_index) * scrollable_area
+                else:
+                    handle_y = scroll_y
+                self.scroll_handle_rect = pygame.Rect(scroll_x, handle_y, 10, handle_height)
+            
+            pygame.draw.rect(self.screen, (180,180,180), self.scroll_handle_rect, border_radius=5)
 
-        # ---------------- 총보유자산 + 화폐별 현금 패널 ----------------
-        panel_padding = 10  # 패널 안쪽 여백
-        margin_right = 20   # 화면 오른쪽 마진
 
-        # 총 보유자산
+        # 총보유자산 + 화폐별 현금 패널 (생략)
+        panel_padding = 10 
+        margin_right = 20 
         total_assets = self.player.total_assets()
-        total_str = f"총 보유자산: {total_assets:.2f}"
-
-        # 화폐별 현금
+        total_str = f"총 보유자산: {total_assets:.2f} 원"
         assets = self.player.assets_by_currency()
-        currency_str = f"현금: {assets['원']:.2f} | 코인: {assets['코인']:.2f} | 금: {assets['금']:.2f} | 스탁: {assets['스탁']:.2f}"
-
-        # 폰트
+        currency_str = f"현금: 원 {assets['원']:.2f} | 코인 {assets['코인']:.2f} | 금 {assets['금']:.2f} | 스탁 {assets['스탁']:.2f}"
         font_size = self.base_font_size
         font = pygame.font.Font(self.font_path, font_size)
-        
-        # 텍스트 너비 계산 (패널 width 결정용)
         total_width = font.size(total_str)[0]
         currency_width = font.size(currency_str)[0]
         text_width = max(total_width, currency_width)
-        
-        # 패널 width 조정 (최소 300, 필요시 텍스트 길이에 맞춰 늘어남)
         panel_width = max(text_width + panel_padding*2, 300)
-        panel_height = font_size*2 + panel_padding*3  # 두 줄 텍스트 + padding
+        panel_height = font_size*2 + panel_padding*3 
         panel_x = self.screen_width - panel_width - margin_right
-        panel_y = 20  # 화면 상단에서 거리 조정 가능
+        panel_y = 20 
 
-        # 패널 그리기
         panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
         pygame.draw.rect(self.screen, (50,50,70), panel_rect, border_radius=UI.BUTTON_BORDER_RADIUS)
         pygame.draw.rect(self.screen, UI.COLORS["border_selected"], panel_rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
-        # 텍스트 그리기
         self.screen.blit(font.render(total_str, True, UI.COLORS["coin_text"]),
-                        (panel_x + panel_padding, panel_y + panel_padding))
+                         (panel_x + panel_padding, panel_y + panel_padding))
         self.screen.blit(font.render(currency_str, True, UI.COLORS["coin_text"]),
-                        (panel_x + panel_padding, panel_y + panel_padding + font_size + 5))
+                         (panel_x + panel_padding, panel_y + panel_padding + font_size + 5))
 
-
-            # ---------------- 구매 UI ----------------
+        # ---------------- 구매/판매 UI (수직 배치로 변경) ----------------
+        msg_panel_y_start = 0
+        
         if self.selected_stock:
-            # 구매 UI 패널 위치
-            purchase_panel_x = UI.POS["stock_list_x"]
+            # 기본 패널 크기 및 속성 정의 (모든 패널이 동일)
+            panel_width = 395
+            panel_height = 70
+            purchase_panel_x = UI.POS["stock_list_x"] # 20
+            
+            # 1. 구매 패널 위치 (기존 위치와 동일)
             purchase_panel_y = UI.POS["stock_list_y"] + self.visible_count * UI.POS["stock_gap"] + 10
-            purchase_panel_width = 395
-            purchase_panel_height = 70
-            purchase_panel_rect = pygame.Rect(purchase_panel_x, purchase_panel_y, purchase_panel_width, purchase_panel_height)
-            pygame.draw.rect(self.screen, (50,50,70), purchase_panel_rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-            pygame.draw.rect(self.screen, UI.COLORS["border_selected"], purchase_panel_rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
+            
+            # 2. 판매 패널 위치 (구매 패널 바로 아래)
+            sell_panel_y = purchase_panel_y + panel_height + 5
+            
+            self.buy_buttons.clear()
+            self.sell_buttons.clear()
 
-            # 구매 UI 텍스트
-            display_str = f"{self.selected_stock.name}: {self.purchase_qty}개 구매 예정"
-            font = pygame.font.Font(self.font_path, 20)
-            text = font.render(display_str, True, UI.COLORS["text"])
-            self.screen.blit(text, (purchase_panel_x + 10, purchase_panel_y + 5))
+            # 렌더링 함수 정의 (패널의 Y 좌표를 인수로 받도록 수정)
+            def draw_trade_panel(panel_x, panel_y, is_selling):
+                panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+                pygame.draw.rect(self.screen, (50,50,70), panel_rect, border_radius=UI.BUTTON_BORDER_RADIUS)
+                pygame.draw.rect(self.screen, UI.COLORS["border_selected"], panel_rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
-            # 구매 버튼 (기존 버튼 X/Y 좌표 계산 사용)
-            btn_gap = 5
-            btn_x = purchase_panel_x + 10
-            btn_y = purchase_panel_y + 35
-            for key in ["minus","plus","pct_10","pct_25","pct_50","pct_100","buy"]:
-                rect = self.buttons[key]
-                rect.x = btn_x
-                rect.y = btn_y
-                mouse_pos = pygame.mouse.get_pos()
-
-                # 버튼 색상
-                if key == "buy":
-                    base_color = (200,0,0)
-                    hover_color = (255,50,50)
+                stock = self.selected_stock
+                current_owned_qty = self.player.owned_stocks.get(stock, {}).get("quantity", 0)
+                
+                if is_selling:
+                    current_qty = self.sell_qty
+                    exec_key = "sell_exec"
+                    exec_label = "판매"
+                    display_str = f"[{stock.name}] 보유: {current_owned_qty:.0f}개 / 판매: {current_qty:.0f}개"
+                    exec_color = (0, 150, 0)
+                    exec_hover_color = (50, 200, 50)
+                    target_buttons_dict = self.sell_buttons
                 else:
-                    base_color = UI.COLORS["button"]
-                    hover_color = UI.COLORS["button_hover"]
-                color = hover_color if rect.collidepoint(mouse_pos) else base_color
-                pygame.draw.rect(self.screen, color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-                pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
+                    current_qty = self.purchase_qty
+                    exec_key = "buy_exec"
+                    exec_label = "구매"
+                    display_str = f"[{stock.name}] 보유: {current_owned_qty:.0f}개 / 구매: {current_qty:.0f}개"
+                    exec_color = (200, 0, 0)
+                    exec_hover_color = (255, 50, 50)
+                    target_buttons_dict = self.buy_buttons
 
-                # 버튼 라벨
-                label = {
-                    "minus":"-","plus":"+","buy":"구매",
-                    "pct_10":"10%","pct_25":"25%","pct_50":"50%","pct_100":"100%"
-                }[key]
+                # UI 텍스트 (상단)
+                font = pygame.font.Font(self.font_path, 18)
+                text = font.render(display_str, True, UI.COLORS["text"])
+                self.screen.blit(text, (panel_x + 10, panel_y + 5))
 
-                # 폰트 처리
-                if rect.collidepoint(mouse_pos):
-                    font_size = int(rect.height * UI.BUTTON_FONT_RATIO * 1.2)
-                    font = pygame.font.Font(self.font_path, font_size)
-                    font.set_bold(True)
-                else:
-                    font_size = int(rect.height * UI.BUTTON_FONT_RATIO)
-                    font = pygame.font.Font(self.font_path, font_size)
+                # 버튼 렌더링
+                btn_gap = 5
+                btn_x = panel_x + 10
+                btn_y = panel_y + 35
+                
+                buttons_to_draw = ["minus", "plus", "pct_10", "pct_25", "pct_50", "pct_100", exec_key]
+                
+                for key in buttons_to_draw:
+                    base_key = key if key not in ["buy_exec", "sell_exec"] else ("buy_exec" if not is_selling else "sell_exec")
+                    rect_template = self.buttons.get(base_key, self.buttons["buy_exec"]) 
+                    rect = pygame.Rect(rect_template)
+                    
+                    rect.x = btn_x
+                    rect.y = btn_y
+                    
+                    target_buttons_dict[key] = rect
+                    
+                    mouse_pos = pygame.mouse.get_pos()
+                    
+                    if key == exec_key:
+                        base_color = exec_color
+                        hover_color = exec_hover_color
+                        label = exec_label
+                    else:
+                        base_color = UI.COLORS["button"]
+                        hover_color = UI.COLORS["button_hover"]
+                        label = {
+                            "minus":"-","plus":"+",
+                            "pct_10":"10%","pct_25":"25%","pct_50":"50%","pct_100":"100%"
+                        }[key]
 
-                text = font.render(label, True, UI.COLORS["text"])
-                text_rect = text.get_rect(center=rect.center)
-                self.screen.blit(text, text_rect)
-                btn_x += rect.width + btn_gap
+                    color = hover_color if rect.collidepoint(mouse_pos) else base_color
+                    pygame.draw.rect(self.screen, color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
+                    pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
-        # ---------------- 판매 UI ----------------
-        if self.selected_stock:
-            # 판매 UI는 구매 UI 바로 아래
-            sell_panel_x = UI.POS["stock_list_x"]
-            sell_panel_y = purchase_panel_y + purchase_panel_height + 5  # 5px 간격
-            sell_panel_width = 395
-            sell_panel_height = 70
-            sell_panel_rect = pygame.Rect(sell_panel_x, sell_panel_y, sell_panel_width, sell_panel_height)
-            pygame.draw.rect(self.screen, (50,50,70), sell_panel_rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-            pygame.draw.rect(self.screen, UI.COLORS["border_selected"], sell_panel_rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
+                    if rect.collidepoint(mouse_pos):
+                        font_size = int(rect.height * UI.BUTTON_FONT_RATIO * 1.2)
+                        font_btn = pygame.font.Font(self.font_path, font_size)
+                        font_btn.set_bold(True)
+                    else:
+                        font_size = int(rect.height * UI.BUTTON_FONT_RATIO)
+                        font_btn = pygame.font.Font(self.font_path, font_size)
 
-            # 판매 UI 텍스트
-            display_str = f"{self.selected_stock.name}: {self.purchase_qty}개 판매 예정"
-            font = pygame.font.Font(self.font_path, 20)
-            text = font.render(display_str, True, UI.COLORS["text"])
-            self.screen.blit(text, (sell_panel_x + 10, sell_panel_y + 5))
+                    text = font_btn.render(label, True, UI.COLORS["text"])
+                    text_rect = text.get_rect(center=rect.center)
+                    self.screen.blit(text, text_rect)
+                    btn_x += rect.width + btn_gap
 
-            # 판매 버튼
-            btn_gap = 5
-            btn_x = sell_panel_x + 10
-            btn_y = sell_panel_y + 35
-            for key in ["minus","plus","pct_10","pct_25","pct_50","pct_100","sell"]:
-                rect = self.buttons[key]
-                rect.x = btn_x
-                rect.y = btn_y
-                mouse_pos = pygame.mouse.get_pos()
+                return panel_rect.bottom 
 
-                # 버튼 색상
-                if key == "sell":
-                    base_color = (200,0,0)
-                    hover_color = (255,50,50)
-                else:
-                    base_color = UI.COLORS["button"]
-                    hover_color = UI.COLORS["button_hover"]
-                color = hover_color if rect.collidepoint(mouse_pos) else base_color
-                pygame.draw.rect(self.screen, color, rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-                pygame.draw.rect(self.screen, UI.COLORS["border_selected"], rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
-                # 버튼 라벨
-                label = {
-                    "minus":"-","plus":"+","sell":"판매",
-                    "pct_10":"10%","pct_25":"25%","pct_50":"50%","pct_100":"100%"
-                }[key]
+            # 1. 구매 패널 렌더링
+            draw_trade_panel(purchase_panel_x, purchase_panel_y, is_selling=False)
+            
+            # 2. 판매 패널 렌더링 (구매 패널 아래)
+            if self.selected_stock in self.player.owned_stocks or self.selected_owned_stock_info:
+                draw_trade_panel(purchase_panel_x, sell_panel_y, is_selling=True)
+                # 경고창 위치: 판매 패널 아래
+                msg_panel_y_start = sell_panel_y + panel_height + 5
+            else:
+                # 판매 패널이 없으면 경고창 위치: 구매 패널 아래
+                msg_panel_y_start = purchase_panel_y + panel_height + 5
 
-                # 폰트 처리
-                if rect.collidepoint(mouse_pos):
-                    font_size = int(rect.height * UI.BUTTON_FONT_RATIO * 1.2)
-                    font = pygame.font.Font(self.font_path, font_size)
-                    font.set_bold(True)
-                else:
-                    font_size = int(rect.height * UI.BUTTON_FONT_RATIO)
-                    font = pygame.font.Font(self.font_path, font_size)
-
-                text = font.render(label, True, UI.COLORS["text"])
-                text_rect = text.get_rect(center=rect.center)
-                self.screen.blit(text, text_rect)
-                btn_x += rect.width + btn_gap
-
-        # ---------------- 부족 금액 메시지 ----------------
+        # ---------------- 부족 금액/수량 메시지 (위치 조정) ----------------
         if self.insufficient_funds_msg:
             current_time = pygame.time.get_ticks()
             if current_time - self.msg_timer <= 1500:
-                # 판매 UI 바로 아래
                 msg_panel_x = UI.POS["stock_list_x"]
-                msg_panel_y = sell_panel_y + sell_panel_height + 5
+                msg_panel_y = msg_panel_y_start 
                 msg_panel_width = 395
                 msg_panel_height = 40
                 msg_rect = pygame.Rect(msg_panel_x, msg_panel_y, msg_panel_width, msg_panel_height)
@@ -439,29 +520,28 @@ class Game:
             else:
                 self.insufficient_funds_msg = None
 
-        # ---------------- 보유 종목 카드 (표 형태) ----------------
+        # ---------------- 보유 종목 카드 (생략) ----------------
         y_start = UI.POS["owned_y_start"]
         columns = ["종목명", "수", "총액", "변동폭", "구매가", "현재가"]
-        base_col_widths = [120, 70, 100, 80, 100, 100]  # 기본 컬럼 너비
+        base_col_widths = [120, 70, 100, 80, 100, 100] 
         row_height = 30
 
-        # 모든 row 데이터 준비
         row_texts = []
-        for stock, info in self.player.owned_stocks.items():
+        owned_stocks_list = list(self.player.owned_stocks.items())
+        for stock, info in owned_stocks_list:
             qty = info["quantity"]
             current_value = stock.price * qty
             buy_total = info["buy_price"] * qty
             profit_ratio = ((current_value - buy_total)/buy_total*100) if buy_total>0 else 0
             row_texts.append([
                 stock.name,
-                str(qty),
+                f"{qty:.0f}",
                 f"{current_value:.2f}",
                 f"{profit_ratio:+.2f}%",
                 f"{info['buy_price']:.2f}",
                 f"{stock.price:.2f}"
             ])
 
-        # 각 컬럼 최대 width 계산
         font_size = 18
         font = pygame.font.Font(self.font_path, font_size)
         col_widths = base_col_widths.copy()
@@ -473,7 +553,6 @@ class Game:
                 if w + 10 > col_widths[i]:
                     col_widths[i] = w + 10
 
-        # 패널 width 계산
         panel_width = sum(col_widths)
         panel_max_width = self.screen_width // 2
         needs_h_scroll = False
@@ -483,10 +562,7 @@ class Game:
         else:
             visible_width = panel_width
 
-        # 패널 x좌표 (오른쪽 끝 기준)
         panel_x = self.screen_width - visible_width - 20
-
-        # 패널 높이
         panel_height = row_height * (len(row_texts) + 1)
         panel_max_height = self.screen_height - y_start - 20
         needs_v_scroll = False
@@ -496,22 +572,18 @@ class Game:
         else:
             visible_height = panel_height
 
-        # 스크롤 위치 초기화
         if not hasattr(self, "owned_scroll_x"):
             self.owned_scroll_x = 0
         if not hasattr(self, "owned_scroll_y"):
             self.owned_scroll_y = 0
 
-        # 패널 그리기
         panel_rect = pygame.Rect(panel_x, y_start, visible_width, visible_height)
         pygame.draw.rect(self.screen, (50,50,70), panel_rect, border_radius=UI.BUTTON_BORDER_RADIUS)
         pygame.draw.rect(self.screen, UI.COLORS["border_selected"], panel_rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
 
-        # 클리핑 영역 설정
         clip_rect = self.screen.get_clip()
         self.screen.set_clip(panel_rect)
 
-        # 헤더
         x = panel_x - self.owned_scroll_x
         y = y_start - self.owned_scroll_y
         for i, col in enumerate(columns):
@@ -519,13 +591,13 @@ class Game:
             self.screen.blit(text, (x + 5, y + 5))
             x += col_widths[i]
 
-        # 세로 구분선
         x = panel_x - self.owned_scroll_x
+        y = y_start
         for w in col_widths:
             x += w
-            pygame.draw.line(self.screen, UI.COLORS["border_selected"], (x, y_start), (x, y_start + panel_height))
+            pygame.draw.line(self.screen, UI.COLORS["border_selected"], (x, y), (x, y + row_height))
+        pygame.draw.line(self.screen, UI.COLORS["border_selected"], (panel_x, y + row_height), (panel_x + panel_width, y + row_height))
 
-        # ---------------- row 클릭용 Rect + hover ----------------
         self.owned_row_rects = []
         mouse_pos = pygame.mouse.get_pos()
         y = y_start + row_height - self.owned_scroll_y
@@ -533,7 +605,6 @@ class Game:
             row_rect = pygame.Rect(panel_x, y, panel_width, row_height)
             self.owned_row_rects.append(row_rect)
 
-            # 선택 및 hover 색상
             if hasattr(self, "selected_owned_row") and self.selected_owned_row == idx:
                 bg_color = UI.COLORS["row_selected"]
             elif row_rect.collidepoint(mouse_pos):
@@ -543,25 +614,24 @@ class Game:
 
             pygame.draw.rect(self.screen, bg_color, row_rect)
 
-            # row 내용 그리기
             x = panel_x - self.owned_scroll_x
             for i, text_str in enumerate(row):
                 if i == 3:
-                    color = UI.COLORS["profit"] if float(row[3].replace("%",""))>=0 else UI.COLORS["loss"]
+                    color = UI.COLORS["profit"] if float(row[3].replace("%","").replace("+",""))>=0 else UI.COLORS["loss"]
                 else:
                     color = UI.COLORS["text"]
                 text = font.render(text_str, True, color)
                 self.screen.blit(text, (x + 5, y))
+                
+                pygame.draw.line(self.screen, UI.COLORS["border_selected"], (x + col_widths[i], y), (x + col_widths[i], y + row_height))
+                
                 x += col_widths[i]
-
-            # 행 구분선
+                
             pygame.draw.line(self.screen, UI.COLORS["border_selected"], (panel_x, y + row_height - 1), (panel_x + panel_width, y + row_height - 1))
             y += row_height
 
-        # 클리핑 해제
         self.screen.set_clip(clip_rect)
 
-        # 스크롤바
         if needs_v_scroll:
             v_scroll_rect = pygame.Rect(panel_x + visible_width - 10, y_start, 10, visible_height)
             pygame.draw.rect(self.screen, (100,100,100), v_scroll_rect)
@@ -570,24 +640,6 @@ class Game:
             pygame.draw.rect(self.screen, (100,100,100), h_scroll_rect)
 
 
-        #         # 부족 금액 메시지 표시 (1.5초 유지)
-        # if self.insufficient_funds_msg:
-        #     current_time = pygame.time.get_ticks()
-        #     if current_time - self.msg_timer <= 1500:
-        #         # 구매 UI 패널 위치 기준으로 바로 아래
-        #         panel_x = UI.POS["stock_list_x"]
-        #         panel_y = UI.POS["stock_list_y"] + self.visible_count*UI.POS["stock_gap"] + 10 + 70 + 5  # 구매UI 패널 높이 70 + 간격 5
-        #         panel_width = 395
-        #         panel_height = 40
-        #         msg_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
-        #         pygame.draw.rect(self.screen, (80,0,0), msg_rect, border_radius=UI.BUTTON_BORDER_RADIUS)
-        #         pygame.draw.rect(self.screen, (255,0,0), msg_rect, 2, border_radius=UI.BUTTON_BORDER_RADIUS)
-        #         font = pygame.font.Font(UI.FONT_PATH, 20)
-        #         text = font.render(self.insufficient_funds_msg, True, (255,200,200))
-        #         text_rect = text.get_rect(center=msg_rect.center)
-        #         self.screen.blit(text, text_rect)
-        #     else:
-        #         self.insufficient_funds_msg = None  # 메시지 사라짐사라짐
     # ---------------- 실행 ----------------
     def run(self):
         while self.running:
