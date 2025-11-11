@@ -1,18 +1,15 @@
 import random
 
 class Stock:
-    def __init__(self, name, price, currency, base_min_mult, base_max_mult):
+    def __init__(self, name, price, currency, base_min_mult, base_max_mult, bias=0.5):
         self.name = name
         self.currency = currency
         self._price = price  # 내부 변수로 가격 저장
         self.base_min_mult = base_min_mult
         self.base_max_mult = base_max_mult
+        self.bias = bias # 종목별 상승 경향성 (0.0 ~ 1.0)
         self.selected = False
-        
-        # [추가] 가격 이력을 저장할 리스트
-        # 가격 업데이트 시 여기에 값이 추가됩니다.
         self.price_history = [price] 
-        # 최대 저장 개수 (예: 100개)
         self.max_history_length = 100 
 
     @property
@@ -28,28 +25,39 @@ class Stock:
     def update_price(self):
         """가격 변동 로직을 실행하고 이력을 저장합니다."""
         
-        # 현재 가격을 기준으로 변동폭 결정
-        # min_mult와 max_mult 사이에서 랜덤 비율을 선택
-        rand_mult = random.uniform(self.base_min_mult, self.base_max_mult)
+        # 1. 변동 폭 크기 결정 (Volatility)
+        # base_max_mult 값이 클수록 변동 폭이 커지도록 합니다.
+        # 예: base_max_mult=10 (스탁)은 base_max_mult=1000 (원)보다 변동 폭이 작음
         
-        # 이전 가격의 +/- 10% 이내에서 변동을 추가
-        base_change_percent = random.uniform(-0.1, 0.1) 
+        # '원'의 최대치(1000)를 기준으로 상대적 변동성 비율을 계산 (최대 1.0)
+        vol_factor = self.base_max_mult / 1000.0 if self.base_max_mult > 0 else 0.01
         
-        # 변동폭 계산: (기본 변동 + 랜덤 영향)
-        change_ratio = base_change_percent * rand_mult
+        # 기본 변동률 (최소 0.001% ~ 최대 5%까지 변동 가능하도록 설정)
+        min_volatility = 0.00001
+        base_max_change_limit = 0.05
+        max_volatility = base_max_change_limit * vol_factor
         
-        new_price = self._price * (1 + change_ratio)
+        # 실제 적용될 변동률 (크기)
+        volatility = random.uniform(min_volatility, max_volatility)
+        
+        
+        # 2. 방향 결정 (Bias 반영)
+        # self.bias 확률로 상승 (direction = 1)
+        if random.random() < self.bias:
+            direction = 1  # 상승
+        else:
+            direction = -1 # 하락
+            
+        # 3. 가격 업데이트
+        change_amount = self._price * (direction * volatility)
+        new_price = self._price + change_amount
         
         # 가격이 0 미만이 되는 것을 방지
-        new_price = max(0.01, new_price) 
+        self._price = max(0.01, new_price) 
         
-        # 현재 가격 (_price를 변경하는 부분)
-        self._price = new_price 
-        
-        # [추가] 가격 이력 업데이트
-        # 1. 새 가격을 리스트 끝에 추가
+        # 4. 가격 이력 업데이트
         self.price_history.append(self._price)
         
-        # 2. 리스트 크기를 제한 (가장 오래된 데이터를 제거)
+        # 5. 리스트 크기를 제한 (가장 오래된 데이터를 제거)
         if len(self.price_history) > self.max_history_length:
             self.price_history.pop(0)
