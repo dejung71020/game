@@ -33,13 +33,13 @@ class Game:
             stocks = []
             for item in data_list[:20]:
                 if cur == "원":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.01, base_max_mult=20, bias=0.51))
+                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.01, base_max_mult=2000, bias=0.51))
                 elif cur == "코인":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.03, base_max_mult=70, bias=0.58))
+                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.03, base_max_mult=7000, bias=0.58))
                 elif cur == "금":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.05, base_max_mult=120, bias=0.64))
+                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.05, base_max_mult=12000, bias=0.64))
                 elif cur == "스탁":
-                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.07, base_max_mult=1000, bias=0.71))
+                    stocks.append(Stock(item["name"], item["price"], cur, base_min_mult=0.07, base_max_mult=100000, bias=0.71))
             self.stocks_by_currency[cur] = stocks
 
         # 초기 차트 데이터 생성을 위해 몇 번 업데이트 실행 (선택 사항)
