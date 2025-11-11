@@ -16,7 +16,9 @@ class UIConfig:
         "button": (80, 80, 255),
         "button_hover": (120, 120, 255),
         "card_bg": (50, 50, 80),
-        "coin_text": (255, 255, 0)
+        "coin_text": (255, 255, 0),
+        "row_hover": (80,80,100),     # 마우스 오버 시 배경
+        "row_selected": (100,100,150) # 클릭 시 선택 배경
     }
 
     POS = {
