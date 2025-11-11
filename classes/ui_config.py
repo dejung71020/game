@@ -18,19 +18,21 @@ class UIConfig:
         "card_bg": (50, 50, 80),
         "coin_text": (255, 255, 0),
         "row_hover": (80,80,100),     # 마우스 오버 시 배경
-        "row_selected": (100,100,150) # 클릭 시 선택 배경
+        "row_selected": (100,100,150), # 클릭 시 선택 배경
+        "disabled": (40, 40, 40), # 예시: 짙은 회색
+        "text_disabled": (100, 100, 100),
     }
 
     POS = {
         "stock_list_x": 20,
-        "stock_list_y": 60,
-        "stock_width": 380,
-        "stock_height": 28,
-        "stock_gap": 30,
+        "stock_list_y": 70,
+        "stock_width": 420,
+        "stock_height": 30,
+        "stock_gap": 35,
         "asset_x": 1030,
         "asset_y": 20,
-        "owned_y_start": 300,
-        "owned_y_gap": 35,
+        "owned_y_start": 550,
+        "owned_y_gap": 70,
         "purchase_y": 100,
     }
 
