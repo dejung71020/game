@@ -23,6 +23,13 @@ class Game:
 
         # ⭐️ 상점 초기화
         self.shop = Shop()
+        # 상점/교환 상태 관리 변수 추가
+        self.is_shop_open = False
+        self.is_exchange_open = False
+        # 폰트 추가 (Shop UI 렌더링을 위해)
+        self.font_sm = pygame.font.Font(UI.FONT_PATH, UI.FONT_SIZE_SMALL)
+        self.font_md = pygame.font.Font(UI.FONT_PATH, UI.FONT_SIZE_MEDIUM)
+        self.font_lg = pygame.font.Font(UI.FONT_PATH, UI.FONT_SIZE_LARGE)
 
         # 종목 데이터 관리
         self.data_manager = DataManager()
@@ -39,17 +46,21 @@ class Game:
             stocks = []
             for item in data_list[:20]:
                 if cur == "원":
-                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.01, max_gain_mult=20, bias=0.51))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.01, max_gain_mult=3, bias=0.6))
+                    #0.01, 3, 0.6
                 elif cur == "코인":
-                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.02, max_gain_mult=7, bias=0.58))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.07, max_gain_mult=6, bias=0.55))
+                    #0.07, 6, 0.55
                 elif cur == "금":
-                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.2, max_gain_mult=12, bias=0.64))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.16, max_gain_mult=9, bias=0.5))
+                    #0.16, 9, 0.5
                 elif cur == "스탁":
-                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.25, max_gain_mult=100, bias=0.71))
+                    stocks.append(Stock(item["name"], item["price"], cur, max_loss_mult=0.12, max_gain_mult=12, bias=0.45))
+                    #0.12, 10, 0.45
             self.stocks_by_currency[cur] = stocks
 
-        # 초기 차트 데이터 생성을 위해 몇 번 업데이트 실행 (선택 사항)
-        for _ in range(5):
+        # 초기 차트 데이터 생성을 위해 몇 번 업데이트 실행 (10)
+        for _ in range(30): #밸런싱 조절을 위해 임시로30
             for stock_list in self.stocks_by_currency.values():
                 for stock in stock_list:
                     stock.update_price()
@@ -132,6 +143,12 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            
+            # --- 키보드 이벤트: ESC로 모달 닫기 ---
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE and (self.is_shop_open or self.is_exchange_open):
+                    self.is_shop_open = False
+                    self.is_exchange_open = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 # 화폐 단위 버튼 클릭
@@ -146,18 +163,27 @@ class Game:
                                 self.stocks = self.stocks_by_currency[cur]
                         
                         elif cur == "상점":
-                            # ⭐️ 상점 버튼 클릭 시 동작 정의
-                            print("상점 버튼 클릭됨")
-                            
-                            #1. 상점 UI를 연다
-                            #2. 상점 UI에는
-                            # 예: self.open_shop_ui()
+                            # ⭐️ 상점 버튼 클릭 시: 상점 모달 상태 토글
+                            self.is_shop_open = not self.is_shop_open
+                            self.is_exchange_open = False # 교환소는 닫기
+                            return # 버튼 클릭 처리 완료
                             
                         elif cur == "교환":
-                            # ⭐️ 교환 버튼 클릭 시 동작 정의
-                            print("교환 버튼 클릭됨")
+                            # ⭐️ 교환 버튼 클릭 시: 교환소 모달 상태 토글
+                            self.is_exchange_open = not self.is_exchange_open
+                            self.is_shop_open = False # 상점은 닫기
+                            return # 버튼 클릭 처리 완료
                             
-                            # 예: self.open_exchange_ui()
+                # --- 모달 창이 열려 있을 때 내부 클릭 처리 ---
+                if self.is_shop_open:
+                    # 상점 모달이 열려 있을 때만 상점 내부 클릭 로직 호출 (이전 단계에서 구현됨)
+                    # self.handle_shop_click(event.pos) 
+                    pass # 이 함수를 클래스 외부에 정의했을 경우를 대비해 pass 처리
+
+                elif self.is_exchange_open:
+                    # 교환 모달이 열려 있을 때만 교환 내부 클릭 로직 호출
+                    # self.handle_exchange_click(event.pos)
+                    pass
 
                 # 마우스 휠 (일반 종목 리스트)
                 if event.button == 4:
@@ -375,7 +401,7 @@ class Game:
     # ---------------- 가격 업데이트 ----------------
     def update_game(self):
         current_time = time.time()
-        if current_time - self.last_update >= 2:
+        if current_time - self.last_update >= 10: #갱신 10초
             for stock_list in self.stocks_by_currency.values():
                 for stock in stock_list:
                     # Stock.update_price()가 이제 price_history를 업데이트합니다.
@@ -771,6 +797,10 @@ class Game:
             else:
                 msg_panel_y_start = purchase_panel_y + panel_height + 5
 
+
+        
+
+
         # ---------------- 부족 금액/수량 메시지 (기존 로직 유지) ----------------
         if self.insufficient_funds_msg:
             current_time = pygame.time.get_ticks()
@@ -931,7 +961,93 @@ class Game:
         else:
             self.owned_v_scroll_handle_rect = None
 
+
+        # ------------------ 모달 창 렌더링 (최상단) ------------------
+        # 모달이 열려 있으면, 메인 화면 위에 렌더링합니다.
+        if self.is_shop_open:
+            # draw_shop_modal 함수가 Game 클래스에 정의되어 있어야 합니다.
+            self.draw_shop_modal() 
+
+        elif self.is_exchange_open:
+            # draw_exchange_modal 함수가 Game 클래스에 정의되어 있어야 합니다.
+            self.draw_exchange_modal()
+
+
             
+    def _draw_modal_base(self, width, height, title=""):
+        """모달 창의 기본 배경과 테두리를 그립니다."""
+        # 화면 중앙 계산
+        start_x = (self.screen_width - width) // 2
+        start_y = (self.screen_height - height) // 2
+        modal_rect = pygame.Rect(start_x, start_y, width, height)
+        
+        # 배경 (투명도가 있는 검은색 오버레이)
+        overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150)) # 150: 투명도
+        self.screen.blit(overlay, (0, 0))
+        
+        # 모달 본체 (밝은 회색)
+        pygame.draw.rect(self.screen, UI.COLOR_LIGHT_GREY, modal_rect, border_radius=10)
+        pygame.draw.rect(self.screen, UI.COLOR_DARK_BLUE, modal_rect, 3, border_radius=10) # 테두리
+        
+        # 닫기 버튼 (우측 상단)
+        close_rect = pygame.Rect(start_x + width - 40, start_y + 10, 30, 30)
+        pygame.draw.rect(self.screen, UI.COLORS["loss"], close_rect, border_radius=5)
+        close_text = self.font_md.render("X", True, UI.COLOR_WHITE)
+        self.screen.blit(close_text, close_text.get_rect(center=close_rect.center))
+        
+        # 제목 (선택 사항)
+        if title:
+            title_surf = self.font_lg.render(title, True, UI.COLOR_DARK_BLUE)
+            self.screen.blit(title_surf, (start_x + 30, start_y + 30))
+            
+        return start_x, start_y # 모달 내용 배치를 위해 시작 좌표 반환
+        
+        
+    def draw_shop_modal(self):
+        """상점 모달 창을 렌더링합니다."""
+        MODAL_W, MODAL_H = 800, 600
+        start_x, start_y = self._draw_modal_base(MODAL_W, MODAL_H, title="💰 상점")
+        
+        shop_items = [
+            {"name": "투자의 기본서", "price": 50000, "effect": "리스크 감소"},
+            {"name": "고급 차트 분석", "price": 100000, "effect": "수익률 증가"},
+            # ...
+        ]
+
+        item_y = start_y + 100
+        for item in shop_items:
+            # 아이템 이름 출력
+            name_surf = self.font_md.render(f"{item['name']} - {item['effect']}", True, UI.COLOR_DARK_BLUE)
+            self.screen.blit(name_surf, (start_x + 50, item_y))
+            
+            # 가격 및 구매 버튼 그리기
+            price_str = f"￦{format_large_number(item['price'])}"
+            price_surf = self.font_md.render(price_str, True, UI.COLORS["profit"])
+            
+            # 구매 버튼 Rect 계산
+            buy_rect = pygame.Rect(start_x + MODAL_W - 150, item_y, 100, 40)
+            
+            # 구매 버튼 렌더링 로직 (색상, 클릭 시 효과 등)
+            pygame.draw.rect(self.screen, UI.COLORS["button"], buy_rect, border_radius=5)
+            
+            buy_text = self.font_sm.render("구매", True, UI.COLORS["text"])
+            self.screen.blit(buy_text, buy_text.get_rect(center=buy_rect.center))
+            
+            item_y += 50 # 다음 아이템을 위한 간격
+        
+        # 현재는 기능만 연결하기 위해 더미 텍스트를 사용합니다.
+
+
+    def draw_exchange_modal(self):
+        """교환소 모달 창을 렌더링합니다."""
+        MODAL_W, MODAL_H = 600, 400
+        start_x, start_y = self._draw_modal_base(MODAL_W, MODAL_H, title="🔄 교환소")
+        
+        # 교환소 내용 렌더링... (여기에 화폐 교환 UI가 들어갑니다.)
+        dummy_text = self.font_md.render("여기에 화폐 교환 UI가 표시됩니다.", True, UI.COLOR_BLACK)
+        self.screen.blit(dummy_text, (start_x + 50, start_y + 100))
+
     # ---------------- 실행 ----------------
     def run(self):
         while self.running:

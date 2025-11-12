@@ -2,10 +2,17 @@
 class UIConfig:
     FONT_PATH = "C:/Windows/Fonts/malgun.ttf"
     FONT_SIZE = 28
-
+    FONT_SIZE_SMALL = 14
+    FONT_SIZE_MEDIUM = 24
+    FONT_SIZE_LARGE = 36
     BG_COLOR_BASE = (20, 20, 40)
     GRADIENT_STEP = 30
-
+    # 새로운 색상 정의 추가 (모달/UI 배경용)
+    COLOR_WHITE = (255, 255, 255)
+    COLOR_BLACK = (0, 0, 0)
+    COLOR_LIGHT_GREY = (200, 200, 200) # 모달 배경색
+    COLOR_DARK_BLUE = (20, 20, 50)     # 모달 테두리 및 텍스트색
+    
     COLORS = {
         "stock_normal": (80, 80, 80),
         "stock_hover": (100, 100, 100),
@@ -43,3 +50,4 @@ class UIConfig:
     BUTTON_BORDER_WIDTH = 2
     BUTTON_FONT_RATIO = 0.6
     COIN_ICON = "💰"
+    
