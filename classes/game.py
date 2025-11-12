@@ -140,17 +140,49 @@ class Game:
 
     # ---------------- 이벤트 처리 ----------------
     def handle_events(self):
+        # 모달 창의 닫기 버튼 Rect 계산 (모든 이벤트 처리 전에 계산)
+        MODAL_W, MODAL_H = 800, 600
+        start_x = (self.screen_width - MODAL_W) // 2
+        start_y = (self.screen_height - MODAL_H) // 2
+        close_rect = pygame.Rect(start_x + MODAL_W - 40, start_y + 10, 30, 30)
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
             
-            # --- 키보드 이벤트: ESC로 모달 닫기 ---
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE and (self.is_shop_open or self.is_exchange_open):
+            # --------------------- ⭐ 1. 모달이 열린 경우 이벤트 가로채기 (핵심) ⭐ ---------------------
+            if self.is_shop_open or self.is_exchange_open:
+                # 1. ESC 키로 닫기
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    print(f"self.is_shop_open : {self.is_shop_open}")
+                    print(f"self.is_exchange_open : {self.is_exchange_open}")
                     self.is_shop_open = False
                     self.is_exchange_open = False
+                    
+                    return 
 
-            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # 2. 마우스 클릭 (X 버튼 및 내부 버튼)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    print(f"클릭 좌표: {event.pos}")
+                    print(f"X 버튼 영역: {close_rect}")
+                    
+                    # 2-1. X 버튼 클릭 처리
+                    if close_rect.collidepoint(event.pos):
+                        # 이 블록이 실행되지 않는다면, 클릭 좌표가 close_rect 안에 없습니다!
+                        if self.is_exchange_open:
+                            print("교환 닫기 버튼 감지됨!")
+                            self.is_exchange_open = False
+                        elif self.is_shop_open:
+                            print("상점 닫기 버튼 감지됨!")
+                            self.is_shop_open = False
+                        return # 이벤트 처리 종료
+                    
+                    # TODO: 여기에 self.handle_shop_modal_click(event.pos) 등 모달 내부 클릭 로직을 추가
+                    
+                # 모달이 열려 있다면, 다른 모든 메인 화면 이벤트는 무시하고 다음 이벤트로 넘어갑니다.
+
+            # --------------------- 2. 모달이 닫혀있는 경우 메인 화면 이벤트 처리 ---------------------    
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1: # 왼쪽 클릭 (LMB)
                 # 화폐 단위 버튼 클릭
                 for cur, rect in self.currency_buttons.items():
                     if rect.collidepoint(event.pos):
@@ -174,17 +206,6 @@ class Game:
                             self.is_shop_open = False # 상점은 닫기
                             return # 버튼 클릭 처리 완료
                             
-                # --- 모달 창이 열려 있을 때 내부 클릭 처리 ---
-                if self.is_shop_open:
-                    # 상점 모달이 열려 있을 때만 상점 내부 클릭 로직 호출 (이전 단계에서 구현됨)
-                    # self.handle_shop_click(event.pos) 
-                    pass # 이 함수를 클래스 외부에 정의했을 경우를 대비해 pass 처리
-
-                elif self.is_exchange_open:
-                    # 교환 모달이 열려 있을 때만 교환 내부 클릭 로직 호출
-                    # self.handle_exchange_click(event.pos)
-                    pass
-
                 # 마우스 휠 (일반 종목 리스트)
                 if event.button == 4:
                     self.scroll_index = max(0, self.scroll_index - 1)
@@ -973,7 +994,7 @@ class Game:
             self.draw_exchange_modal()
 
 
-            
+
     def _draw_modal_base(self, width, height, title=""):
         """모달 창의 기본 배경과 테두리를 그립니다."""
         # 화면 중앙 계산
@@ -1041,7 +1062,7 @@ class Game:
 
     def draw_exchange_modal(self):
         """교환소 모달 창을 렌더링합니다."""
-        MODAL_W, MODAL_H = 600, 400
+        MODAL_W, MODAL_H = 800, 600
         start_x, start_y = self._draw_modal_base(MODAL_W, MODAL_H, title="🔄 교환소")
         
         # 교환소 내용 렌더링... (여기에 화폐 교환 UI가 들어갑니다.)
