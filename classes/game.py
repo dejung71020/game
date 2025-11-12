@@ -9,6 +9,12 @@ from classes.ui_config import UIConfig as UI
 from classes.data_manager import DataManager
 from classes.shop import Shop
 class Game:
+    # 정방향 교환 비율 정의 (예: 원 1000개가 코인 1개가 됨)
+    EXCHANGE_RATES = {
+        ("원", "코인"): 1000,
+        ("코인", "금"): 1000,
+        ("금", "스탁"): 1000
+    }
     def __init__(self):
         pygame.init()
         self.screen_width, self.screen_height = 1280, 720
@@ -137,6 +143,9 @@ class Game:
         self.font_path = UI.FONT_PATH
         self.base_font_size = UI.FONT_SIZE
         self.font = pygame.font.Font(self.font_path, self.base_font_size)
+
+        #교환
+        
 
     # ---------------- 이벤트 처리 ----------------
     def handle_events(self):
@@ -1014,8 +1023,34 @@ class Game:
         # 닫기 버튼 (우측 상단)
         close_rect = pygame.Rect(start_x + width - 40, start_y + 10, 30, 30)
         pygame.draw.rect(self.screen, UI.COLORS["loss"], close_rect, border_radius=5)
+        # ------------------ ⭐ Hover 로직 추가 ⭐ ------------------
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # 마우스가 버튼 영역 내에 있는지 확인
+        if close_rect.collidepoint(mouse_pos):
+            # Hover 시 밝은 색상 (예: Light Loss 색상)
+            button_color = (255, 100, 100) # 더 밝은 빨간색으로 가정
+        else:
+            # 기본 색상 (UI.COLORS["loss"])
+            button_color = UI.COLORS["loss"]
+            
+        pygame.draw.rect(self.screen, button_color, close_rect, border_radius=5)
+        # -----------------------------------------------------------
+        
         close_text = self.font_md.render("X", True, UI.COLOR_WHITE)
         self.screen.blit(close_text, close_text.get_rect(center=close_rect.center))
+
+        # ------------------ ⭐ Hover 로직 추가 ⭐ ------------------
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # 마우스가 버튼 영역 내에 있는지 확인
+        if close_rect.collidepoint(mouse_pos):
+            # Hover 시 밝은 색상 (예: Light Loss 색상)
+            button_color = (255, 100, 100) # 더 밝은 빨간색으로 가정
+        else:
+            # 기본 색상 (UI.COLORS["loss"])
+            button_color = UI.COLORS["loss"]
+
         
         # 제목 (선택 사항)
         if title:
@@ -1069,6 +1104,32 @@ class Game:
         dummy_text = self.font_md.render("여기에 화폐 교환 UI가 표시됩니다.", True, UI.COLOR_BLACK)
         self.screen.blit(dummy_text, (start_x + 50, start_y + 100))
 
+    def convert_currency(self, amount, from_unit, to_unit):
+        """
+        지정된 양을 한 화폐 단위에서 다른 화폐 단위로 변환하는 함수.
+
+        amount: 교환하려는 양 (float 또는 int)
+        from_unit: 시작 화폐 단위 ('원', '코인', '금', '스탁')
+        to_unit: 목표 화폐 단위 ('원', '코인', '금', '스탁')
+        return: (변환된 금액, 교환 방향: "divide" 또는 "multiply" 또는 "error")
+        """
+    
+    # 1. 정방향 교환 (높은 단위로: 1000으로 나눗셈)
+    if (from_unit, to_unit) in self.EXCHANGE_RATES:
+        rate = self.EXCHANGE_RATES[(from_unit, to_unit)]
+        converted_amount = amount / rate
+        return converted_amount, "divide"
+    
+    # 2. 역방향 교환 (낮은 단위로: 1000으로 곱셈)
+    elif (to_unit, from_unit) in self.EXCHANGE_RATES:
+        rate = self.EXCHANGE_RATES[(to_unit, from_unit)]
+        converted_amount = amount * rate
+        return converted_amount, "multiply"
+    
+    # 3. 교환 불가능한 경우 (예: '원'을 '금'으로 직접 변환 시도)
+    else:
+        # 이웃한 단위가 아니거나, 단위 자체가 잘못된 경우
+        return 0, "error"
     # ---------------- 실행 ----------------
     def run(self):
         while self.running:
