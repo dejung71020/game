@@ -12,6 +12,7 @@ class Stock:
             self.currency = "원"
             self._price = price
             self.unit = "원"
+            
         elif currency == "코인" :
             self.currency = "원"
             self._price = price * 1000
