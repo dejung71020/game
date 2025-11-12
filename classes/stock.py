@@ -7,8 +7,24 @@ class Stock:
     """
     def __init__(self, name, price, currency, bias, max_gain_mult, max_loss_mult):
         self.name = name
-        self.currency = currency
-        self._price = price
+        
+        if currency == "원" :
+            self.currency = "원"
+            self._price = price
+            self.unit = "원"
+        elif currency == "코인" :
+            self.currency = "원"
+            self._price = price * 1000
+            self.unit = "코인"
+        elif currency == "금" :
+            self.currency = "원"
+            self._price = price * 1000000
+            self.unit = "금"
+        elif currency == "스탁" :
+            self.currency = "원"
+            self._price = price * 1000000000
+            self.unit = "원"
+        
         self.bias = bias                        # 상승 확률 (0.0 ~ 1.0)
         self.max_gain_mult = max_gain_mult      # 최대 상승 배율 (예: 20.0)
         self.max_loss_mult = max_loss_mult      # 최대 하락 배율 (예: 0.01)
